@@ -30,6 +30,8 @@
 #include <MsgBoxConstants.au3>
 #include <WinAPIFiles.au3>
 #include <File.au3>
+Opt("SendKeyDownDelay", 1)
+Opt("SendKeyDelay", 1)
 
 #cs ----------------------------------------------------------------------------
 drag and drop onto exe
