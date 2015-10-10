@@ -292,13 +292,11 @@ For $i = 3 To $split[0] Step +1
 			EndSwitch
 			;FileWrite("notes.txt", $note)
 			;ConsoleWrite("(" & $delay & ")" & Dec($delay) & @CRLF)
-			GUICtrlSetData($delayD, "(" & $delay & ")" & Dec($delay))
+			GUICtrlSetData($delayD, "(" & $delay & ") " & Dec($delay))
 			;ConsoleWrite("(" & $not & ") " & $note & @CRLF)
 			GUICtrlSetData($noteD, "(" & $not & ") " & $note)
 			$delay = Dec($delay)
-			If ($delay <> 0) Then
-			   Sleep(($vel + ($delay)/1000)*GUICtrlRead($speedMultiplier))
-			EndIf
+			Sleep((($delay)/1000)*GUICtrlRead($speedMultiplier))
 			Send($note, 1)
 			$delay = ""
 		 ElseIf ($notes == 80) then
@@ -307,11 +305,9 @@ For $i = 3 To $split[0] Step +1
 			$vel = Dec($onAndOffNotes[$j+2])
 			$j = $j + 2
 			;ConsoleWrite("(" & $delay & ")" & Dec($delay) & @CRLF)
-			GUICtrlSetData($delayD, "(" & $delay & ")" & Dec($delay))
+			GUICtrlSetData($delayD, "(" & $delay & ") " & Dec($delay))
 			$delay = Dec($delay)
-			If ($delay <> 0) Then
-			   Sleep(($vel + ($delay)/1000)*GUICtrlRead($speedMultiplier))
-			EndIf
+			Sleep((($delay)/1000)*GUICtrlRead($speedMultiplier))
 			$delay = ""
 		 Else
 			$delay &= $notes
