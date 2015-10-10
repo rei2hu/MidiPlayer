@@ -36,6 +36,7 @@ If $CmdLine[0] <> 0 Then
 Else
    MsgBox(0, "Error", "did not drag file onto exe")
    $file = "mop2.mid"
+   exit
 EndIf
 
 #cs ----------------------------------------------------------------------------
@@ -294,7 +295,10 @@ For $i = 3 To $split[0] Step +1
 			GUICtrlSetData($delayD, "(" & $delay & ")" & Dec($delay))
 			;ConsoleWrite("(" & $not & ") " & $note & @CRLF)
 			GUICtrlSetData($noteD, "(" & $not & ") " & $note)
-			Sleep(($vel + $delay)/100*GUICtrlRead($speedMultiplier))
+			$delay = Dec($delay)
+			If ($delay <> 0) Then
+			   Sleep(($vel + ($delay)/1000)*GUICtrlRead($speedMultiplier))
+			EndIf
 			Send($note, 1)
 			$delay = ""
 		 ElseIf ($notes == 80) then
@@ -304,7 +308,10 @@ For $i = 3 To $split[0] Step +1
 			$j = $j + 2
 			;ConsoleWrite("(" & $delay & ")" & Dec($delay) & @CRLF)
 			GUICtrlSetData($delayD, "(" & $delay & ")" & Dec($delay))
-			Sleep(($vel + $delay)/100*GUICtrlRead($speedMultiplier))
+			$delay = Dec($delay)
+			If ($delay <> 0) Then
+			   Sleep(($vel + ($delay)/1000)*GUICtrlRead($speedMultiplier))
+			EndIf
 			$delay = ""
 		 Else
 			$delay &= $notes
