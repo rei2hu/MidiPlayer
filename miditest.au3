@@ -1,27 +1,20 @@
 #cs ----------------------------------------------------------------------------
-
  AutoIt Version: 3.3.12.0
  Author:         reimu
  Version:        2
-
  Script Function:
 	some midi stuff hex
 	can be used for ONLY Format 0 or Format 1 midi files (I think)
-
     Format 0 MIDI files consist of a header-chunk and a single track-chunk.
     The single track chunk will contain all the note and tempo information.
-
     Format 1 MIDI files consist of a header-chunk and one or more track-chunks,
 	with all tracks being played simultaneously.
     The first track of a Format 1 file is special, and is also known as the 'Tempo Map'.
 	It should contain all meta-events of the types Time Signature, and Set Tempo.
 	The meta-events Sequence/Track Name, Sequence Number, Marker, and SMTPE Offset.
 	should also be on the first track of a Format 1 file.
-
 	Format information credits: https://www.csie.ntu.edu.tw/~r92092/ref/midi/
-
 	Note: Only "last" track is played so tempo information is basically ignored
-
 #ce ----------------------------------------------------------------------------
 
 #include <GUIConstantsEx.au3>
@@ -43,7 +36,6 @@ If $CmdLine[0] <> 0 Then
 Else
    MsgBox(0, "Error", "did not drag file onto exe")
    $file = "mop2.mid"
-   Exit
 EndIf
 
 #cs ----------------------------------------------------------------------------
@@ -169,7 +161,7 @@ For $i = 3 To $split[0] Step +1
 	  ;ConsoleWrite($notes & @CRLF)
 	  If ($notes == 90) then
 		 $not = $onAndOffNotes[$j+1]
-		 $vel = $onAndOffNotes[$j+2]
+		 $vel = Dec($onAndOffNotes[$j+2])
 		 $j = $j + 2
 		 Switch Dec($not)
 			Case "36"
@@ -302,17 +294,17 @@ For $i = 3 To $split[0] Step +1
 			GUICtrlSetData($delayD, "(" & $delay & ")" & Dec($delay))
 			;ConsoleWrite("(" & $not & ") " & $note & @CRLF)
 			GUICtrlSetData($noteD, "(" & $not & ") " & $note)
-			Sleep($delay/100*GUICtrlRead($speedMultiplier))
+			Sleep(($vel + $delay)/100*GUICtrlRead($speedMultiplier))
 			Send($note, 1)
 			$delay = ""
 		 ElseIf ($notes == 80) then
 			;FileWrite("notes.txt", " (" & $delay & ") ")
 			$not = $onAndOffNotes[$j+1]
-			$vel = $onAndOffNotes[$j+2]
+			$vel = Dec($onAndOffNotes[$j+2])
 			$j = $j + 2
 			;ConsoleWrite("(" & $delay & ")" & Dec($delay) & @CRLF)
-			GUICtrlSetData($delayD, "(" & $not & ") " & $note)
-			Sleep($delay/100*GUICtrlRead($speedMultiplier))
+			GUICtrlSetData($delayD, "(" & $delay & ")" & Dec($delay))
+			Sleep(($vel + $delay)/100*GUICtrlRead($speedMultiplier))
 			$delay = ""
 		 Else
 			$delay &= $notes
