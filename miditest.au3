@@ -1,7 +1,7 @@
 #cs ----------------------------------------------------------------------------
  AutoIt Version: 3.3.12.0
  Author:         reimu
- Version:        2
+ Version:        3
  Script Function:
 	some midi stuff hex
 	can be used for ONLY Format 0 or Format 1 midi files (I think)
@@ -35,8 +35,7 @@ If $CmdLine[0] <> 0 Then
    MsgBox(0, "Loaded", "Loaded " & $file & @CRLF & "(this will close in 3)", 3)
 Else
    MsgBox(0, "Error", "did not drag file onto exe")
-   $file = "mop2.mid"
-   exit
+   $file = "My Soul Your Beats.mid"
 EndIf
 
 #cs ----------------------------------------------------------------------------
@@ -54,7 +53,7 @@ GUICtrlCreateLabel("Delay:", 10, 30, 100, 20)
 GUICtrlCreateLabel("Mult:", 10, 50, 100, 20)
 Global $noteD = GUICtrlCreateLabel("$note", 50, 10, 100, 20)
 Global $delayD = GUICtrlCreateLabel("$delay", 50, 30, 100, 20)
-Global $speedMultiplier = GUICtrlCreateLabel("1", 50, 50, 180, 50)
+Global $speedMultiplier = GUICtrlCreateLabel("3", 50, 50, 180, 50)
 GUISetState(@SW_SHOW, $hMainGUI)
 
 #cs ----------------------------------------------------------------------------
@@ -155,14 +154,12 @@ For $i = 3 To $split[0] Step +1
    ;$onAndOffNotes = StringRegExp($actualData, "90..", 3)
    $onAndOffNotes = StringSplit($actualData, " ", 1)
 
-   WinActivate("Piano (1) - Google Chrome")
-
    For $j = 1 To $onAndOffNotes[0] Step +1
 	  $notes = $onAndOffNotes[$j]
 	  ;ConsoleWrite($notes & @CRLF)
 	  If ($notes == 90) then
 		 $not = $onAndOffNotes[$j+1]
-		 $vel = Dec($onAndOffNotes[$j+2])
+		 $vel = $onAndOffNotes[$j+2]
 		 $j = $j + 2
 		 Switch Dec($not)
 			Case "36"
@@ -291,23 +288,32 @@ For $i = 3 To $split[0] Step +1
 			   $note = "?"
 			EndSwitch
 			;FileWrite("notes.txt", $note)
-			;ConsoleWrite("(" & $delay & ")" & Dec($delay) & @CRLF)
+			ConsoleWrite("(" & $delay & ") " & Dec($delay) & @CRLF)
+			ConsoleWrite("(" & $not & " @" & $vel & ") " & $note & @CRLF)
 			GUICtrlSetData($delayD, "(" & $delay & ") " & Dec($delay))
-			;ConsoleWrite("(" & $not & ") " & $note & @CRLF)
-			GUICtrlSetData($noteD, "(" & $not & ") " & $note)
+			GUICtrlSetData($noteD, "(" & $not & " @" & $vel & ") " & $note)
 			$delay = Dec($delay)
-			Sleep((($delay)*GUICtrlRead($speedMultiplier)/1000))
-			Send($note, 1)
+			If ($delay <> 0) Then
+			   Sleep(10*GUICtrlRead($speedMultiplier))
+			   Sleep((($delay)*GUICtrlRead($speedMultiplier)/1000)-(10*GUICtrlRead($speedMultiplier)))
+			EndIf
+			ControlSend("", "", "[CLASS:Chrome_RenderWidgetHostHWND]", $note, 1)
+			;Sleep(50)
+			;FileWrite("notes.txt", $note & " || WAIT: " & $delay &@CRLF)
 			$delay = ""
 		 ElseIf ($notes == 80) then
 			;FileWrite("notes.txt", " (" & $delay & ") ")
+			ConsoleWrite("(" & $delay & ")" & Dec($delay) & @CRLF)
 			$not = $onAndOffNotes[$j+1]
 			$vel = Dec($onAndOffNotes[$j+2])
 			$j = $j + 2
-			;ConsoleWrite("(" & $delay & ")" & Dec($delay) & @CRLF)
 			GUICtrlSetData($delayD, "(" & $delay & ") " & Dec($delay))
 			$delay = Dec($delay)
-			Sleep((($delay)*GUICtrlRead($speedMultiplier)/1000))
+			If ($delay <> 0) Then
+			   Sleep(10*GUICtrlRead($speedMultiplier))
+			   Sleep((($delay)*GUICtrlRead($speedMultiplier)/1000)-(10*GUICtrlRead($speedMultiplier)))
+			EndIf
+			FileWrite("notes.txt", "WAIT: " & $delay & $note & @CRLF)
 			$delay = ""
 		 Else
 			$delay &= $notes
