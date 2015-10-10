@@ -157,7 +157,7 @@ For $i = 3 To $split[0] Step +1
 
    WinActivate("Piano (1) - Google Chrome")
 
-   For $j = 33 To $onAndOffNotes[0] Step +1
+   For $j = 1 To $onAndOffNotes[0] Step +1
 	  $notes = $onAndOffNotes[$j]
 	  ;ConsoleWrite($notes & @CRLF)
 	  If ($notes == 90) then
@@ -296,7 +296,7 @@ For $i = 3 To $split[0] Step +1
 			;ConsoleWrite("(" & $not & ") " & $note & @CRLF)
 			GUICtrlSetData($noteD, "(" & $not & ") " & $note)
 			$delay = Dec($delay)
-			Sleep((($delay)/1000)*GUICtrlRead($speedMultiplier))
+			Sleep((($delay)*GUICtrlRead($speedMultiplier)/1000))
 			Send($note, 1)
 			$delay = ""
 		 ElseIf ($notes == 80) then
@@ -307,7 +307,7 @@ For $i = 3 To $split[0] Step +1
 			;ConsoleWrite("(" & $delay & ")" & Dec($delay) & @CRLF)
 			GUICtrlSetData($delayD, "(" & $delay & ") " & Dec($delay))
 			$delay = Dec($delay)
-			Sleep((($delay)/1000)*GUICtrlRead($speedMultiplier))
+			Sleep((($delay)*GUICtrlRead($speedMultiplier)/1000))
 			$delay = ""
 		 Else
 			$delay &= $notes
