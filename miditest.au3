@@ -206,8 +206,10 @@ For $j = 1 to $notesAndDelay[0] Step +1
 		 Sleep(1)
 	  Until $binFlag
 	  GUICtrlSetData($state, "PLAYING")
-	  If $delay = 0 and not StringIsSpace($note) Then
-		 $noteDisplay &= $note
+	  If $delay = 0 Then
+		 if not StringIsSpace($note) then
+			$noteDisplay &= $note
+		 EndIf
 	  Else
 		 GUICtrlSetData($delayD, $delay)
 		 $noteDisplay = $note
