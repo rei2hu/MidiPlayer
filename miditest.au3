@@ -32,7 +32,6 @@
 #include "format1parse.au3"
 #include "format2parse.au3"
 #include "vlvprocessing.au3"
-#include "playnotes.au3"
 #include "signedHex.au3"
 ;#include "GUIScrollbars_Ex.au3"
 
