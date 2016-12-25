@@ -11,6 +11,7 @@
 5. Drag .mid file onto the executable that was created
 6. Wait for and go through the prompts then press space to start
 
+You can see steps 3-6 on [Youtube](https://www.youtube.com/watch?v=pL6dIJIj4l0)
 # Hotkeys
 
 Spacebar - play/pause
