@@ -28,6 +28,7 @@
 #include <File.au3>
 #include <String.au3>
 #include <Array.au3>
+#include <Math.au3>
 #include "format0parse.au3"
 #include "format1parse.au3"
 #include "format2parse.au3"
@@ -47,10 +48,7 @@ If $CmdLine[0] <> 0 Then
 Else
    MsgBox(0, "Error", "did not drag file onto exe" & @CRLF & "will play default (Esoragoto.mid) if exists or crash")
    $file = "Esoragoto.mid"
-   ;$file = "u.mid"
-   ;$file = "sl.mid"
-   ;$file = "b.mid"
-   ;$file = "s.mid"
+   $file = "th4_09.mid"
 EndIf
 
 #cs ----------------------------------------------------------------------------
@@ -101,485 +99,140 @@ EndFunc
 processing midi
 #ce ----------------------------------------------------------------------------
 
-Local $note = ""
-Local $notes = ""
-Local $onAndOffNotes = ""
-Local $actualNotes = ""
-Local $newString = ""
-Local $newNotes = ""
-Local $delay = ""
-Local $tempoInfo = ""
-Local $timeInfo = ""
-Local $noteInfo = ""
-Local $delayTotal = 0
-Local $tempoType = ""
-Local $tempo2
-Local $noteDisplay = ""
 Dim $binFlag = False
 
 Local $hFileOpen = FileOpen($file, 16)
 Local $sFileRead = FileRead($hFileOpen)
 FileClose($hFileOpen)
 
-; MIDI FORMAT (HEX)
+; trim 2 off because it starts with 0x
+$sFileRead = StringTrimLeft($sFileRead, 2)
+Local $tBytes = StringSplit($sFileRead, "")
 
-; trim 2 off left because it starts with 0x
+Local $pointerPos = 1;
 
-; HEADER CHUNK SHOULD ALWAYS BE 14 BYTES LONG?
-; 4 BYTES ; ######## should be 4D546864 which is MThd, the header chunk
-; 4 BYTES ; ######## should be 00000006 which is the header length, (usually 6 but there can be outliers)
-; 2 BYTES ; ####     should be how many tracks there are 0000 = 1 track, 0001 = multi track, 0002 = multi song
-; 2 BYTES ; ####     should be number of track chunks that follow 000# = # of tracks
-; 2 BYTES ; ####     "units per beat" or tempo
-; So a header chunk should be formatted like 4D546864 00000006 #### (format) #### (tracks) #### (default delta time)
+Func nextBytes($bytes, $number)
+   $number = $number
+   $ret = ""
+   For $i = 0 to $number - 1
+	  $ret = $ret & $bytes[$pointerPos + $i]
+   Next
+   $pointerPos = $pointerPos + $number
+   Return $ret
+EndFunc
 
-; trim 0x (2), MThd (8), header length (8) 8+8+2=18
-$sFileRead = StringTrimLeft($sFileRead, 18)
-
-$format = Dec(StringMid($sFileRead, 1, 4))
-$tracks = Dec(StringMid($sFileRead, 5, 4))
-$tempo = StringMid($sFileRead, 9, 4)
-
-; DELTA TIME INFO
-; MSB determines how it is structured
-; BIT = 00 ; FOLLOWING BIT = 0-14 ; determines the number of delta-time units in each quater-note
-; BIT = 01 ; FOLLOWING BIT = 0-7  ; determines the number of delta-time units per SMTPE frame
-; BIT = 01 ; FOLLOWING BIT = 8-14 ; make it a negative number, represents the number of SMTPE frames per second (i dont get it)
-
-Call("signMe", $tempo)
-
-$sFileRead = StringTrimLeft($sFileRead, 12)
-;MsgBox(0, "", "Format: " & $format & @CRLF & "Tracks: " & $tracks & @CRLF & $tempoType & ": " & $tempo2)
-
-; split into different tracks
-$split = StringSplit($sFileRead, "4D54726B", 1)
-
-Switch($format)
-   Case "0"
-	  Call("format0parse")
-   Case "1"
-	  Call("format1parse", $split)
-   Case "2"
-	  Call("format2parse")
-   Case Else
-	  MsgBox(0, "Error", "Format was not 0, 1, or 2")
-EndSwitch
-
-; FIXING UP THE NOTES ================================================
-
-Local $totalDelay
-Local $m = 2
-
-$notesAndDelay = StringSplit($noteInfo, @CRLF)
-$tempoAndDelay = StringSplit ($tempoInfo, @CRLF)
-
-
-For $k = 1 to $tempoAndDelay[0] Step +1
-   If StringLen($tempoAndDelay[$k]) > 1 Then
-	  $tempo = StringRegExpReplace($tempoAndDelay[$k], "\([0-9]+\)", "") + 0
-	  $delay = StringRegExp($tempoAndDelay[$k], "\([0-9]+\)", 2)
-	  $delay2 = StringTrimRight(StringTrimLeft($delay[0], 1),1)
-	  GUICtrlSetData($tempoD, $tempo/1000)
-	  ExitLoop
-   EndIf
+; this will make an array of 'bytes'
+For $i = 1 to UBound($tBytes) - 1 Step 2
+   $tBytes[($i + 1)/ 2] = $tBytes[$i] & $tBytes[$i + 1]
 Next
 
-;ConsoleWrite($noteInfo & @CRLF)
-;ConsoleWrite($tempoInfo & @CRLF)
+#cs ======
+   Actual MIDI processing section
+   see: http://www.ccarh.org/courses/253/handout/smf/
+#ce ======
 
-Local $ctrlleft = 0
-Local $ctrltop = 0
-Local $printwidth = 20
-Local $currentpage = 1
-Local $lastdeleted = 0
-Local $lastadded
-Local $cmplt
-Local $tempdelay = 0
-Local $hMainGUI2 = GUICreate("notes", $GUIWidth, 510, "", 151,0x00800000)
-GUISetFont(12, 700)
-Local $ctrlpos
+; =
+; Header Chunk
+; =
 
-Global $LEASTDELAY = 2048
+; MThd (4) and header length (4)
+nextBytes($tBytes, 4)
+nextBytes($tBytes, 4)
 
+Local $format = Dec(nextBytes($tBytes, 2))
+Local $tracks = Dec(nextBytes($tBytes, 2))
 
-; MAKING THE "VISUALIZER" LOL ========================================
-; how it works
-; loads 3000 notes at start
-; once notes go offscreen, they are deleted from previously deleted note to most recent played
-; then load notes from most recently loaded to amount of deleted notes (recent played - deleted
-Local $visualize = MsgBox(4, "visualizer", "Would you like the visualizer?" & @CRLF & "there are " & $notesAndDelay[0] & " notes")
-if $visualize=6 then
-   if $notesAndDelay[0] < 2000 Then
-	  $lastadded = $notesAndDelay[0]
-   Else
-	  $lastadded = 2000
-   endif
-   ;_AddNotesToGUI(0, $lastadded, true)
-   ;_GUIScrollbars_Generate($hMainGUI2, $ctrlleft, $ctrltop+10)
-   ;_GUIScrollBars_ShowScrollBar($hMainGUI2, $SB_BOTH, false)
-   GUISetBkColor($COLOR_BLACK)
-   GUISetState(@SW_SHOW, $hMainGUI2)
-   ToolTip("")
-else
-   MsgBox(0, "", "Ready to play")
-endif
+; timing is ticks per beat
+; if negative, SMPTE compatible units (look this up later)
+Local $timing = Dec(nextBytes($tBytes, 2))
 
+MsgBox(0, "Some Info", "Format: " & $format & @CRLF & "Tracks: " & $tracks & @CRLF & "Timing: " & $timing)
 
-; PLAYING THE NOTES ======================================================
-; check if pause is on
-; parse info into notes and delay (vlv time)
-; sleep for the delay length
-;
-For $j = 1 to $notesAndDelay[0] Step +1
-
-   ;If StringLen($notesAndDelay[$j]) > 4 Then
-	  ;pause function
-	  if not $binflag then
-		 GUICtrlSetData($state, "PAUSED")
-		 Do
-			Sleep(1)
-		 Until $binFlag
-		 GUICtrlSetData($state, "PLAYING")
-	  endif
-
-	  ;parse
-	  $note = StringLeft($notesAndDelay[$j], 1)
-	  $delay = StringTrimLeft(StringTrimRight($notesAndDelay[$j], 1), 3)
-	  $totalDelay += $delay
-
-	  ;check tempo
-	  If $totalDelay+1 >= $delay2 Then
-		 For $k = $m to $tempoAndDelay[0] Step +1
-			If StringLen($tempoAndDelay[$k]) > 1 Then
-			   $tempo = StringRegExpReplace($tempoAndDelay[$k], "\([0-9]+\)", "") + 0
-			   $delay3 = StringRegExp($tempoAndDelay[$k], "\([0-9]+\)", 2)
-			   $totalDelay = $totalDelay - $delay2
-			   ;$totalDelay = 0
-			   $delay2 = StringTrimRight(StringTrimLeft($delay3[0], 1),1)
-			   $m = $m + 1
-			   GUICtrlSetData($tempoD, $tempo/1000)
-			   ;ConsoleWrite("Playing at " & $tempo & " for " & $delay3 & " " & $delay2 & @CRLF)
-			   ExitLoop
-			EndIf
-		 Next
-	  EndIf
-
-	  ;update notedisplay variable to include next note
-	  if StringRegExp($note, "[0-9a-zA-Z!-)@^*]+")==1 then
-		 $noteDisplay &= $note
-	  EndIf
-
-	  ;at the end of a chord display the note (if delay is 0 then notes will be displayed together)
-	  If $delay <> 0 Then
-		 if StringRegExp($noteDisplay, "[0-9a-zA-Z!-)@^*]+")==1 then
-			GUICtrlSetData($noteD, $noteDisplay)
-		 EndIf
-		 GUICtrlSetData($delayD, $delay)
-		 $noteDisplay = ""
-	  EndIf
-
-	  ;sleep before playing note
-	  sleep(($tempo/1000) * $delay * GUICtrlRead($speedMultiplier)/10000)
-
-	  if $delay <> 0 then
-		 $tempdelay = $delay
-	  endif
-	  if $delay = 0 Then
-		 $delay = $tempdelay
-	  endif
-
-	  _AddNotesToGUI2($note)
-	  if StringRegExp($note, "?")==0 and StringRegExp($note, " ")==0 then
-		 ControlSend("", "", "[CLASS:Chrome_RenderWidgetHostHWND; INSTANCE:1]", $note, 1)
-		 GUICtrlSetColor(Eval("blu" & $j), _AlterBrightness($delay))
-	  EndIf
-
-	  ;get position of note thats was already played on gui and scroll if its too much
-	  ;$ctrlpos = ControlGetPos("notes", "", Eval("blu" & $j))
-	  if $ctrltop >= 480 then
-		 ;$currentpage+=1
-		 ;delete the notes that have been scrolled by
-		 ;for $k=$lastdeleted to $j Step +1
-			;GUICtrlDelete(Eval("blu" & $k))
-		 ;Next
-		 ;add $j-$whatever notes to the gui starting from $lastadded
-		 ;example - added 1000 deleted 0-500, add starting from 1000, 500 notes
-		 ;example2 - deleted 500 750, add starting from 1500, 250 notes
-		 ;if $lastadded < $notesAndDelay[0] then
-			;_AddNotesToGUI($lastadded, $j-$lastdeleted, false)
-		 ;endif
-		 ;_GUIScrollbars_Scroll_Page( $hMainGUI2,0, $currentpage)
-		 ;Local $change = $j-$lastdeleted
-		 ;$lastadded += $change
-		 ;$lastdeleted = $j
-		 $ctrltop=0
-	  EndIf
-   ;EndIf
-Next
-
-
-
-; FUNCTIONS ===========================================================
-Func _AddNotesToGUI2($note)
-   if $delay = 0 Then
-	  $ctrlleft +=$printwidth/2
-	  $blegh = 1
-   elseif $delay <= 64 then
-	  $ctrlleft +=$printwidth
-	  $blegh = 2
-   Elseif $delay <= 128 then
-	  $ctrlleft +=$printwidth*2
-	  $blegh = 4
-   Elseif $delay <= 256 then
-	  $ctrlleft +=$printwidth*4
-	  $blegh = 8
-   Elseif $delay <= 512 then
-	  $ctrlleft +=$printwidth*8
-	  $blegh = 16
-   Elseif $delay <= 1024 then
-	  $ctrlleft +=$printwidth*16
-	  $blegh = 32
-   Elseif $delay <= 2048 then
-	  $ctrlleft +=$printwidth*32
-	  $blegh =64
-   Else
-	  $ctrlleft +=$printwidth*64
-	  $blegh = 128
-   endif
-   if $ctrlleft+18>$GUIWidth then
-	  $ctrltop+=20
-	  $ctrlleft=15 + ($ctrlleft - $GUIWidth)
-   endif
-   ;for $q=0 to $blegh step +1
-	;  GUICtrlCreateLabel("", $ctrlleft, $ctrltop, 30, 20)
-   ;Next
-   if StringRegExp($note, "?")==0 and StringRegExp($note, " ")==0 then
-	  Assign("blu" & $j, GUICtrlCreateLabel($note, $ctrlleft, $ctrltop, 30+$ctrlleft, 20), 2)
-	  ;Assign("blu" & $j, GUICtrlCreateLabel("â–²", $ctrlleft, $ctrltop, 30+$ctrlleft, 20), 2)
-   endif
-   ;GUICtrlSetColor(Eval("blu" & $j), $COLOR_GREEN)
-   GUICtrlDelete(Eval("blu" & $j-500))
-EndFunc ;==>AddNotesToGUI2
-
-Func _AddNotesToGUI($begin, $end, $init)
-   Local $end2
-   if not $init then
-	  if $notesAndDelay[0] < $begin+$end Then
-		 $end2 = $notesAndDelay[0]
+; this is for variable length values
+; if highest bit of a byte is set, then keep going
+; else return this value after adding this bytes value
+Func dec2Bin($dec)
+   Local $str = ""
+   While $dec > 0
+	  If BitAND($dec, 1) == 1 Then
+		 $str = "1" & $str
 	  Else
-		 $end2 = $begin+$end
+		 $str = "0" & $str
 	  EndIf
-   Else
-	  $end2 = $end
-   EndIf
-   ;ConsoleWrite("Adding " & $begin & " to " & $end2 & @CRLF)
-   for $p=$begin to $end2 Step +1
-	  If StringLen($notesAndDelay[$p]) > 4 Then
-		 $note = StringLeft($notesAndDelay[$p], 1)
-		 $delay = StringTrimLeft(StringTrimRight($notesAndDelay[$p], 1), 3)
-		 if $delay < $LEASTDELAY and $delay >= 64 then
-			$LEASTDELAY = $delay
-		 Endif
-			if $delay = 0 Then
-			   $ctrlleft += $printwidth/2
-			elseif $delay <= 64 then
-			   $ctrlleft +=$printwidth
-			Elseif $delay <= 128 then
-			   $ctrlleft +=$printwidth*2
-			Elseif $delay <= 256 then
-			   $ctrlleft +=$printwidth*4
-			Elseif $delay <= 512 then
-			   $ctrlleft +=$printwidth*8
-			Elseif $delay <= 1024 then
-			   $ctrlleft +=$printwidth*16
-			Elseif $delay <= 2048 then
-			   $ctrlleft +=$printwidth*32
-			Else
-			   $ctrlleft +=$printwidth*64
-			endif
-			if $ctrlleft+18>$GUIWidth then
-			   $ctrltop+=15
-			   $ctrlleft=15 + ($ctrlleft - $GUIWidth)
-			endif
-			Assign("blu" & $p, GUICtrlCreateLabel($note, $ctrlleft, $ctrltop), 2)
-			;ConsoleWrite("added blu"&$p&@CRLF)
-			GUICtrlSetColor(Eval("blu" & $p), $COLOR_WHITE)
+	  $dec = BitShift($dec, 1)
+   WEnd
+   ; padding
+   Return StringRight("00000000" & $str, 8)
+EndFunc
+
+Func bin2Dec($bin)
+   Local $length = StringLen($bin)
+   Local $value = 0
+   For $i = 0 to $length
+	  Local $char = StringMid($bin, $length - $i, 1)
+	  If StringCompare($char, "1") = 0 Then
+		 $value = $value + 2 ^ $i
 	  EndIf
    Next
-
-EndFunc ;==>AddNotesToGUI
-
-Func _AlterBrightness($delay)
-
-    Local $grn = 255-(255*(($LEASTDELAY/2)/($delay+1)))
-    Local $red = 255-$grn
-    Local $blu = 0
-    Return LimitCol($red) * 0x10000 + LimitCol($grn) * 0x100 + LimitCol($blu)
-
-EndFunc  ;==>AlterBrightness
-
-Func limitCol($cc)
-    If $cc > 255 Then Return 255
-    If $cc < 0 Then Return 0
-    Return $cc
-EndFunc  ;==>limitCol
-
-
-
-
-
-
-
-
-
-
-
-; OLD STUFF ==================================================================================================
-; ============================================================================================================
-; ============================================================================================================
-; ============================================================================================================
-; ============================================================================================================
-; ============================================================================================================
-; ============================================================================================================
-; ============================================================================================================
-; ============================================================================================================
-; ============================================================================================================
-; ============================================================================================================
-; ============================================================================================================
-; ============================================================================================================
-; ============================================================================================================
-; ============================================================================================================
-
-
-
-
-   #cs
-   If ($delay <> 0) Then
-	  Sleep(10*GUICtrlRead($speedMultiplier))
-	  Sleep((($delay)*GUICtrlRead($speedMultiplier)/1000)-(10*GUICtrlRead($speedMultiplier)))
-   EndIf
-   MouseMove( MouseGetPos(0), (Dec($vel) - 30 )* (@DeskTopHeight / 97), 0)
-   WinActivate("[CLASS:Chrome_RenderWidgetHostHWND; INSTANCE:1]", "")
-   GUICtrlSetData($state, "PLAYING")
-   ControlSend("", "", "[CLASS:Chrome_RenderWidgetHostHWND; INSTANCE:1]", $note, 1)
-   #ce
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#cs
-
-
-; TRACK CHUNK
-; 4 BYTES ; ######## should be 4D54726B which is MTrk, the track chunk
-; 4 BYTES ; ######## should be 0000000# which is the track length
-; ? BYTES ; a sequenced track event
-
-; trim length because StringSplit removes MTrk
-$sFileRead = StringTrimLeft($sFileRead, 8)
-
-; track 2 because track 1 = header track 2 = tempo map track 3 = actual notes
-For $i = 1 To $split[0] Step +1
-
-   $newNotes = ""
-   $2split = StringRegExp($split[$i], "..", 3)
-   For $k = 0 To UBound($2split)-1 Step +1
-	  $newNotes &= $2split[$k] & " "
-   Next
-   ;ConsoleWrite($newNotes & @CRLF)
-
-   $split[$i] = $newNotes
-   ;$split[$i] = StringRegExpReplace($split[$i], "(91|92|93|94|95|96|97|98|99|9A|9B|9C|9D|9E|9F)", "90")
-   ;$split[$i] = StringRegExpReplace($split[$i], "(81|82|83|84|85|86|87|80|89|8A|8B|8C|8D|8E|8F)", "80")
-   ;$split[$i] = StringRegExpReplace($split[$i], " ", "")
-   ;ConsoleWrite($split[$i] & @CRLF)
-
-   $chunkLength = Dec(StringMid($split[$i], 1, 8)) & " (" & StringLen(StringTrimLeft($split[$i], 8)) & ")"
-   ConsoleWrite("Chunk " & $i & ": " & @CRLF & "Length: " & $chunkLength & @CRLF)
-
-   ; trim track length
-   $myChunk = StringTrimLeft($split[$i], 8)
-   ;ConsoleWrite($myChunk & @CRLF & @CRLF)
-   $actualNotes = StringSplit($myChunk, "FF", 1)
-
-   For $p = 1 to $actualNotes[0] Step +1
-	  $metaEventIdentifier = StringRight(StringLeft($actualNotes[$p], 3), 2)
-	  ConsoleWrite("(" & $metaEventIdentifier & ") " & @CRLF)
-	  $stuff = StringReplace(StringTrimLeft($actualNotes[$p], 7), " ", "")
-	  Switch($metaEventIdentifier)
-		 Case "00"
-			$trackInfo &= "Sequence Number: " & StringTrimRight(_HexToString($stuff), 1) & @CRLF
-		 Case "01"
-			$trackInfo &= "Text Event: " & StringTrimRight(_HexToString($stuff), 1) & @CRLF
-		 Case "02"
-			$trackInfo &= "Copyright Notice: " & StringTrimRight(_HexToString($stuff), 1) & @CRLF
-		 Case "03"
-			$trackInfo &= "Sequence: " & StringTrimRight(_HexToString($stuff), 1) & @CRLF
-		 Case "04"
-			$trackInfo &= "Instrument Name: " & StringTrimRight(_HexToString($stuff), 1) & @CRLF
-;		 Case "58"
-;			$trackInfo &= "Time Signature: " & Dec(StringLeft($stuff, 2)) & "/" & (2^Dec(StringRight(StringLeft($stuff, 4), 2))) & @CRLF
-		 Case "59"
-			$sharpFlatNumber = Dec(StringLeft($stuff, 2))
-			$trackInfo &= "Flats(-)/Sharps(+): " & $sharpFlatNumber & @CRLF
-		 Case Else
-			;$trackInfo &= "Unknown Meta-Event. Prefix and info is " & StringTrimLeft($metaEvents[$i], 3)
-	  EndSwitch
-	  ConsoleWrite($trackInfo)
-   Next
-
-   If ($i == 3) Then
-	  MsgBox(0, "MIDI Format", "This is a Format " & $trackAmount & " file with " & $chunkAmount & " tracks." & @CRLF & "-------------------------------------" & @CRLF & $trackInfo)
-   EndIf
-
-
-   ; if -1 then you get FF 2F 00 or just 2F 00, the end of the chunk
-   ; if -2 then you get last meta event and rest of chunk
-   $metaAndNotes = $actualNotes[UBound($actualNotes)-2]
-   $lastMetaLength = Dec(StringLeft(StringTrimLeft($metaAndNotes, 4), 2))
-   $actualData =StringTrimLeft($metaAndNotes, $lastMetaLength * 3 + 7)
-   ;ConsoleWrite($actualData & @CRLF)
-   ;$onAndOffNotes = StringRegExp($actualData, "90..", 3)
-   $onAndOffNotes = StringSplit($actualData, " ", 1)
-
-   For $j = 1 To $onAndOffNotes[0] Step +1
-	  $notes = $onAndOffNotes[$j]
-	  ;ConsoleWrite($notes & @CRLF)
-	  If ($notes == 90) then
-		 $not = $onAndOffNotes[$j+1]
-		 $vel = $onAndOffNotes[$j+2]
-		 $j = $j + 2
-		 Switch Dec($not)
+   Return $value
+EndFunc
+
+Func vlv($byte)
+   $byte = Dec($byte)
+   Local $totalVal = dec2Bin(BitAND($byte, 127)) ; removes msb
+   While $byte >= 128
+	  $byte = Dec(nextBytes($tBytes, 1))
+	  $totalVal = $totalVal & dec2Bin(BitAND($byte, 127))
+   WEnd
+
+   Return bin2Dec($totalVal)
+EndFunc
+
+Sleep(3000)
+
+; =
+; Track Chunks (loop based on number)
+; =
+Local $curTrack = 1
+
+$notesAndDelays = ""
+
+
+Global $strs[$tracks]
+
+For $j = 0 To $tracks - 1
+   Local $str = ""
+   Local $mtrk = nextBytes($tBytes, 4) ; MTrk
+   ConsoleWrite("mtrk " & ($j + 1) & ": " & $mtrk & @CRLF)
+   Local $bytes = nextBytes($tBytes, 4)
+   ConsoleWrite("bytes: " & $bytes & @CRLF)
+   Local $tLength = Dec($bytes)
+   ConsoleWrite("length: " & $tLength & @CRLF)
+   Local $i = 0
+   Local $delay = 0
+
+   While $i < $tLength
+	  $delta = vlv(nextBytes($tBytes, 1))
+	  $status = nextBytes($tBytes, 1)
+	  $i += 2
+
+	  ; ConsoleWrite(" Delta: " & $delta & @CRLF)
+	  $delay = $delay + $delta
+
+
+	  Switch(StringLeft($status, 1))
+		 ; midi events
+		 ; no fallthrough btw
+	  Case "8"
+		 ; off, dont care
+		 nextBytes($tBytes, 2)
+		 $i += 2
+	  Case "9"
+		 ; right byte is channel, dont care
+		 $pressedKey = nextBytes($tBytes, 1)
+		 $velocity = nextBytes($tBytes, 1)
+		 $i += 2
+		 Switch Dec($pressedKey)
 			Case "36"
 			   $note = "1"
 			Case "37"
@@ -705,46 +358,118 @@ For $i = 1 To $split[0] Step +1
 			Case Else
 			   $note = "?"
 			EndSwitch
-			;FileWrite("notes.txt", $note)
-			ConsoleWrite("(" & $delay & ") " & Dec($delay) & @CRLF)
-			ConsoleWrite("(" & $not & " @" & $vel & ") " & $note & @CRLF)
-			GUICtrlSetData($delayD, "(" & $delay & ") " & Dec($delay))
-			GUICtrlSetData($noteD, "(" & $not & " @" & $vel & ") " & $note)
-			$delay = Dec($delay)
-			If ($delay <> 0) Then
-			   Sleep(10*GUICtrlRead($speedMultiplier))
-			   Sleep((($delay)*GUICtrlRead($speedMultiplier)/1000)-(10*GUICtrlRead($speedMultiplier)))
-			EndIf
-			MouseMove( MouseGetPos(0), (Dec($vel) - 30 )* (@DeskTopHeight / 97), 0)
-			WinActivate("[CLASS:Chrome_RenderWidgetHostHWND; INSTANCE:1]", "")
-			Do
-			   if not $binFlag then
-				  GUICtrlSetData($state, "PAUSED")
-			   endif
-			   Sleep(1)
-			Until $binFlag
-			GUICtrlSetData($state, "PLAYING")
-			ControlSend("", "", "[CLASS:Chrome_RenderWidgetHostHWND; INSTANCE:1]", $note, 1)
-			;Sleep(50)
-			;FileWrite("notes.txt", $note & " || WAIT: " & $delay &@CRLF)
-			$delay = ""
-		 ElseIf ($notes == 80) then
-			;FileWrite("notes.txt", " (" & $delay & ") ")
-			ConsoleWrite("(" & $delay & ")" & Dec($delay) & @CRLF)
-			$not = $onAndOffNotes[$j+1]
-			$vel = Dec($onAndOffNotes[$j+2])
-			$j = $j + 2
-			GUICtrlSetData($delayD, "(" & $delay & ") " & Dec($delay))
-			$delay = Dec($delay)
-			If ($delay <> 0) Then
-			   Sleep(10*GUICtrlRead($speedMultiplier))
-			   Sleep((($delay)*GUICtrlRead($speedMultiplier)/1000)-(10*GUICtrlRead($speedMultiplier)))
-			EndIf
-			;FileWrite("notes.txt", "WAIT: " & $delay & $note & @CRLF)
-			$delay = ""
-		 Else
-			$delay &= $notes
+		 If $delay <> 0 Then
+			; ConsoleWrite("Waiting for " & $delay & @CRLF)
+			; Sleep(($delay / $timing) * ($microPerQuarter / 1000))
 		 EndIf
-   Next
+		 ; $delay = 0
+		 $strs[$j] = $strs[$j] & "|" & ($delay / $timing) * 100 & "," & $note
+		 ; ConsoleWrite(" " & $status & " " & $pressedKey & " " & $velocity & @CRLF)
+		 ; Send($note)
+	  Case "A"
+		 ; polyphonic key pressure, dont care
+		 nextBytes($tBytes, 2)
+		 $i += 2
+	  Case "B"
+		 ; controller change, dont care
+		 nextBytes($tBytes, 2)
+		 $i += 2
+	  Case "C"
+		 ; program change, dont care
+		 nextBytes($tBytes, 1)
+		 $i += 1
+	  Case "D"
+		 ; channel key pressure, dont care
+		 nextBytes($tBytes, 1)
+		 $i += 1
+	  Case "E"
+		 ; pitch bend, dont care
+		 nextBytes($tBytes, 2)
+		 $i += 2
+	  Case "F"
+		 ; sysex or meta
+		 ; meta
+		 $i += 1
+		 If $status == "FF" Then
+			Local $byts = nextBytes($tBytes, 1)
+			$isTempo = $byts == "51"
+			; $length = vlv(nextBytes($tBytes, 1)) ; length of event data
+			; nextBytes($tBytes, $length) ; discard those bytes
+			$isEnd = $byts == "2F"
+		 Else
+			$isTempo = False
+		 EndIf
+		 If $isEnd Then
+			nextBytes($tBytes, 1)
+			ExitLoop
+		 EndIf
+
+		 $length = vlv(nextBytes($tBytes, 1)) ; length of event data
+		 $i += 1
+		 nextBytes($tBytes, $length) ; discard those bytes
+		 $i += $length
+		 ; ConsoleWrite(" META/SYSEX: " & $status & " (" & $length & ")" & @CRLF)
+	  EndSwitch
+   WEnd
+
 Next
-#ce
+
+Local $maxLen = 0
+For $i = 0 To Ubound($strs) - 1
+   $maxLen = _Max(StringSplit($strs[$i], "|")[0], $maxLen)
+Next
+
+Local $container[UBound($strs)]; [$maxLen]
+
+For $i = 0 To Ubound($strs) - 1
+   Local $arr = StringSplit($strs[$i], "|")
+   _ArrayDelete($arr, 0)
+   #cs
+   For $j = 1 To $arr[0] - 1
+	  $container[$i][$j] = $arr[$j]
+   Next
+   #ce
+   $container[$i] = $arr
+Next
+
+Func checkContainer(ByRef $ar, $time)
+   ; ConsoleWrite($time & @CRLF)
+   For $i = 0 To UBound($ar) - 1
+	  ; ConsoleWrite("contents: " & ($ar[$i])[0] & @CRLF)
+	  If StringInStr(($ar[$i])[0], ",") <> 0 Then
+		 Local $stuff = StringSplit(($ar[$i])[0], ",")
+		 Local $exc = $stuff[1]
+		 Local $key = $stuff[2]
+		 If $time > $exc Then
+			Send($key, 1)
+			_ArrayPush($ar[$i], 0)
+		 EndIf
+	  Else
+		 _ArrayPush($ar[$i], 0)
+	  EndIf
+   Next
+EndFunc
+
+; _ArrayDisplay($container)
+
+Local $tim = 0
+While True
+   checkContainer($container, $tim)
+   ; multiplier here
+   Sleep(20)
+   $tim += 10
+WEnd
+
+
+
+
+
+
+
+
+
+
+
+
+
+
